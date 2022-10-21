@@ -11,8 +11,8 @@ const (
 )
 
 func main() {
-	target := int64(5001)
-	inputs := []int64{4000, 2000}
+	target := int64(10001)
+	inputs := []int64{8000, 2000, 1010}
 	outputs, err := UnderlyingForSigning(target, inputs)
 	if err != nil {
 		log.Fatal(err)
@@ -23,20 +23,8 @@ func main() {
 }
 
 func UnderlyingForSigning(target int64, inputs []int64) (outputs []int64, err error) {
-
-	fee := int64(1000)
-	//	sendingAmount := int64(0)
-	// split amount
-	// EDs in input[0]
-	//	edsInTarget := target / existentialDeposit
-	//	firstAmount := (existentialDeposit * (edsInTarget - edsToRetain)) + remainder
-	//	secondAmount := target - firstAmount
+	fee := int64(5)
 	outputs, sendingAmount, _ := buildInputsOutputs(target, inputs, fee)
-	//	outputsFirst, sendingAmountSubtotal1, _ := buildInputsOutputs(firstAmount, inputs, fee)
-	//	outputsSecond, sendingAmountSubtotal2, _ := buildInputsOutputs(secondAmount, inputs, fee)
-	//	outputs = append(outputs, outputsFirst...)
-	//	outputs = append(outputs, outputsSecond...)
-
 	fmt.Printf("sendingAmount: %d\n", sendingAmount)
 	fmt.Printf("outputs: %v\n", outputs)
 
@@ -44,49 +32,58 @@ func UnderlyingForSigning(target int64, inputs []int64) (outputs []int64, err er
 }
 
 func buildInputsOutputs(target int64, inputs []int64, fee int64) (outputs []int64, totalSendingAmount int64, err error) {
-	fmt.Printf("target: %d\n", target)
-	remainder := target % existentialDeposit
-
 	for i, inputAmount := range inputs {
-		canPayAllRetainingED := inputAmount-fee-existentialDeposit >= target
-		canPayAllRetainingDust := inputAmount-fee > target && !canPayAllRetainingED
-		canPayAllRetainingZero := inputAmount-fee == target
-		canPaySomeRetainingED := inputAmount-fee-existentialDeposit < target
-		canPaySomeRetainingZero := inputAmount-fee < target
-
-		fmt.Printf("input %d\n", i)
-		fmt.Printf("canPayAllRetainingED: %v\n", canPayAllRetainingED)
-		fmt.Printf("canPayAllRetainingDust: %v\n", canPayAllRetainingDust)
-		fmt.Printf("canPayAllRetainingZero: %v\n", canPayAllRetainingZero)
-		fmt.Printf("canPaySomeRetainingED: %v\n", canPaySomeRetainingED)
-		fmt.Printf("canPaySomeRetainingZero: %v\n", canPaySomeRetainingZero)
-		fmt.Println("--------------------------------")
-
-		sendFromThisInput := int64(0)
-		if remainder != 0 {
-			sendFromThisInput = remainder
-		}
-
-		if canPayAllRetainingED {
-			totalSendingAmount = target
-			inputs[i] = inputAmount - target - fee
-			target = 0
+		if target == 0 {
 			break
 		}
 
-		if canPayAllRetainingZero {
-			sendFromThisInput := target - fee
-			totalSendingAmount += sendFromThisInput
-			inputs[i] = sendFromThisInput
-			target -= sendFromThisInput
+		maxSpendRetainingSpendableBalance := inputAmount - existentialDeposit - fee
+
+		canPayAllRetainingED := maxSpendRetainingSpendableBalance >= target
+		canPayAllRetainingDust := inputAmount-fee > target && !canPayAllRetainingED
+		canPayAllRetainingZero := inputAmount-fee == target
+		canPaySomeRetainingED := maxSpendRetainingSpendableBalance < target && maxSpendRetainingSpendableBalance >= existentialDeposit // ACTUAL ED
+		canPaySomeRetainingZero := inputAmount-fee < target
+
+		remainder := target % existentialDeposit
+		fmt.Printf("input %d, target amount: %d\n", i, target)
+		sendFromThisInput := int64(remainder)
+
+		switch {
+		case canPayAllRetainingED:
+			fmt.Println("canPayAllRetainingED")
+			sendFromThisInput = target
+
+		case canPayAllRetainingDust:
+			// unimplemented
+			fallthrough
+
+		case canPayAllRetainingZero:
+			fmt.Println("canPayAllRetainingZero")
+			sendFromThisInput = target
+
+		case canPaySomeRetainingED:
+			fmt.Println("canPaySomeRetainED")
+			nEds := (inputAmount / existentialDeposit) - 1
+			if sendFromThisInput != 0 {
+				nEds--
+			}
+			sendFromThisInput += nEds * existentialDeposit
+
+		case canPaySomeRetainingZero:
+			fmt.Println("canPaySomeRetainingZero")
+			sendFromThisInput = inputAmount - fee
+
+		default:
+			fmt.Println("this input cannot pay")
 		}
 
-		if canPaySomeRetainingED {
-			sendFromThisInput += (inputAmount/existentialDeposit)*existentialDeposit - existentialDeposit - fee
-			totalSendingAmount += sendFromThisInput
-			inputs[i] = sendFromThisInput
-			target -= sendFromThisInput
-		}
+		target -= sendFromThisInput
+		totalSendingAmount += sendFromThisInput
+		inputs[i] = inputAmount - sendFromThisInput - fee
+		outputs = append(outputs, sendFromThisInput)
+		fmt.Printf("sendFromThisInput: %d\n", sendFromThisInput)
+		fmt.Println("--------------------------------")
 	}
 	fmt.Printf("outputs: %v\n", outputs)
 	fmt.Printf("totalSendingAmount: %v\n", totalSendingAmount)
