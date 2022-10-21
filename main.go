@@ -12,7 +12,7 @@ const (
 
 func main() {
 	target := int64(10001)
-	inputs := []int64{8000, 2010, 2010}
+	inputs := []int64{2020, 4000, 8000}
 	outputs, err := UnderlyingForSigning(target, inputs)
 	if err != nil {
 		log.Fatal(err)
@@ -44,10 +44,12 @@ forLoop:
 		canPayAllRetainingDust := inputAmount-fee > target && !canPayAllRetainingED
 		canPayAllRetainingZero := inputAmount-fee == target
 		canPaySomeRetainingED := maxSpendRetainingSpendableBalance < target && maxSpendRetainingSpendableBalance >= existentialDeposit // ACTUAL ED
-		canPaySomeRetainingZero := inputAmount-fee < target && inputAmount-fee >= existentialDeposit && remainder == 0
+		//		canPaySomeRetainingZero := inputAmount-fee < target && inputAmount-fee >= existentialDeposit && remainder == 0
+		canPaySomeRetainingZero := inputAmount-fee < target && inputAmount-fee >= existentialDeposit
 
 		fmt.Printf("input %d, inputAmount: %d target amount: %d\n", i, inputAmount, target)
-		sendFromThisInput := int64(remainder)
+		//		sendFromThisInput := int64(remainder)
+		sendFromThisInput := int64(0)
 
 		switch {
 		case canPayAllRetainingED:
@@ -64,18 +66,23 @@ forLoop:
 
 		case canPaySomeRetainingZero:
 			fmt.Println("canPaySomeRetainingZero")
-			if remainder == 0 {
-				// must send multiple of ED
-				if inputAmount-fee < 2*existentialDeposit {
-					continue forLoop
-				}
-			}
-			sendFromThisInput = ((inputAmount - fee) / existentialDeposit) * existentialDeposit
+			sendFromThisInput = inputAmount - fee
+			//			if remainder == 0 {
+			//				// must send multiple of ED
+			//				if inputAmount-fee < 2*existentialDeposit {
+			//					continue forLoop
+			//				}
+			//			}
+			// max spend
+			//			sendFromThisInput = (((inputAmount - fee) / existentialDeposit) - 1) * existentialDeposit
 
 		case canPaySomeRetainingED:
 			fmt.Println("canPaySomeRetainingED")
 			nEds := (inputAmount / existentialDeposit) - 1
-			if sendFromThisInput != 0 {
+			if remainder != 0 {
+				if inputAmount-fee < 2*existentialDeposit {
+					continue forLoop
+				}
 				nEds--
 			}
 			sendFromThisInput += nEds * existentialDeposit
@@ -89,6 +96,7 @@ forLoop:
 		inputs[i] = inputAmount - sendFromThisInput - fee
 		outputs = append(outputs, sendFromThisInput)
 		fmt.Printf("sendFromThisInput: %d\n", sendFromThisInput)
+		fmt.Printf("remainingThisInput: %d\n", inputAmount-sendFromThisInput-fee)
 		fmt.Println("--------------------------------")
 	}
 	fmt.Printf("outputs: %v\n", outputs)
